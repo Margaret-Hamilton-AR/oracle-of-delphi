@@ -155,7 +155,7 @@ module overmind::price_oracle {
         @param admin - signer representing the oracle admin
     */
     fun init_module(admin: &signer) {
-	
+
     }
 
     /* 
@@ -183,8 +183,28 @@ module overmind::price_oracle {
         @param pair - id of the coin pair being updated
         @return - the price of the pair along with the confidence
     */
-    public fun get_price(pair: String): Price acquires PriceBoard {
+    // Error codes
+    const E_PAIR_NOT_FOUND: u64 = 101; // Error code for 'pair not found'
+    const E_DATA_IS_STALE: u64 = 102;  // Error code for 'stale data'
+    const MAXIMUM_FRESH_DURATION_SECONDS: u64 = 3 * 60 * 60; // 3 hours in seconds
 
+    public fun get_price(pair: String): Price acquires PriceBoard {
+        let account_reference = @overmind; 
+        let seed_value = SEED;
+
+        let resource_account_address = account::create_resource_address(&account_reference, seed_value);
+        let price_board = borrow_global<PriceBoard>(resource_account_address);
+        let prices = &price_board.prices;
+        let price_feed = table::borrow(prices,pair);
+        
+        // Check if the data is fless/equal than 3 hours.
+        let current_timestamp = timestamp::now_seconds();
+        assert!(
+            current_timestamp - price_feed.latest_attestation_timestamp_seconds <= MAXIMUM_FRESH_DURATION_SECONDS,
+            E_DATA_IS_STALE
+        );
+
+        price_feed.price
     }
 
     /* 
@@ -196,6 +216,21 @@ module overmind::price_oracle {
     */
     public fun get_price_no_older_than(pair: String, maximum_age_seconds: u64): Price 
     acquires PriceBoard {
+        let account_reference = @overmind; 
+        let seed_value = SEED;
+
+        let resource_account_address = account::create_resource_address(&account_reference, seed_value);
+        let price_board = borrow_global<PriceBoard>(resource_account_address);
+        let prices = &price_board.prices;
+
+        assert!(table::contains(prices, pair), E_PAIR_NOT_FOUND);
+
+        let price_feed = table::borrow(prices,pair);
+        let current_timestamp = timestamp::now_seconds();
+
+        assert!(price_feed.latest_attestation_timestamp_seconds > current_timestamp - maximum_age_seconds, E_DATA_IS_STALE);
+
+        price_feed.price
         
     }
 
@@ -207,6 +242,17 @@ module overmind::price_oracle {
                     the price was attested
     */
     public fun get_price_unsafe(pair: String): (Price, u64) acquires PriceBoard {
+        let account_reference = @overmind; 
+        let seed_value = SEED;
+
+        let resource_account_address = account::create_resource_address(&account_reference, seed_value);
+        let price_board = borrow_global<PriceBoard>(resource_account_address);
+        let prices = &price_board.prices;
+
+        assert!(table::contains(prices, pair), E_PAIR_NOT_FOUND);
+
+        let price_feed = table::borrow(prices,pair);
+        (price_feed.price,price_feed.latest_attestation_timestamp_seconds)
         
     }
 
